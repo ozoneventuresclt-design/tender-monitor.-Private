@@ -29,7 +29,11 @@ DISTRICT_NAMES = {"1.0": "Thiruvananthapuram", "2.0": "Kollam", "3.0": "Pathanam
                   "8.0": "Thrissur", "9.0": "Palakkad", "10.0": "Malappuram", "11.0": "Kozhikode",
                   "12.0": "Wayanad", "13.0": "Kannur", "14.0": "Kasargode"}
 DEFAULT_DISTRICTS = "14.0,13.0,12.0,11.0,10.0,9.0,8.0"
-HEADERS = {"User-Agent": "Mozilla/5.0 (personal tender checker; once a day)"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-IN,en;q=0.9",
+}
 
 
 def win_num(window_no):
@@ -63,17 +67,37 @@ def parse_page(html, page_url=BASE):
     return tenders, nxt
 
 
+def debug_response(label, r):
+    """Onnum kittiyillenkil site entha thirichu thannathu ennu log-il kaanikkum."""
+    text = " ".join(BeautifulSoup(r.text, "html.parser").get_text(" ").split())
+    print(f"  [{label}] status={r.status_code} length={len(r.text)} text='{text[:250]}'")
+
+
 def fetch_district(session, dist, max_pages):
-    data = {"nameDist": dist, "distid": dist, "namelbtype": "0", "namelocalbody": "0",
-            "txtsearch": "", "localbodyid": "", "s": "0", "sbmtsearch": "Search"}
-    r = session.post(BASE, data=data, headers=HEADERS, timeout=60)
-    r.raise_for_status()
+    form = {"nameDist": dist, "distid": dist, "namelbtype": "0", "namelocalbody": "0",
+            "txtsearch": "", "localbodyid": "", "s": "0"}
+    try:
+        session.get(BASE, headers=HEADERS, timeout=60)           # cookie edukkaan
+    except requests.RequestException as e:
+        print(f"  [warmup GET] error: {e}")
+
+    # 1) browser form submit pole POST
+    r = session.post(BASE, data={**form, "sbmtsearch": "Search"},
+                     headers={**HEADERS, "Referer": BASE}, timeout=60)
     results, nxt = parse_page(r.text)
+    if not results:
+        debug_response("POST", r)
+        # 2) POST work cheythillenkil GET (pagination links GET aanu use cheyyunnath)
+        r = session.get(BASE, params=form, headers={**HEADERS, "Referer": BASE}, timeout=60)
+        results, nxt = parse_page(r.text, r.url)
+        if not results:
+            debug_response("GET", r)
+            return []
+
     pages = 1
     while nxt and pages < max_pages:
         time.sleep(2)                                    # site-ine load kodukkaruthu
-        r = session.get(nxt, headers=HEADERS, timeout=60)
-        r.raise_for_status()
+        r = session.get(nxt, headers={**HEADERS, "Referer": BASE}, timeout=60)
         more, nxt = parse_page(r.text, nxt)
         if not more:
             break
@@ -105,7 +129,11 @@ def main():
     session = requests.Session()
     all_found = []
     for d in districts:
-        found = fetch_district(session, d, max_pages)
+        try:
+            found = fetch_district(session, d, max_pages)
+        except requests.RequestException as e:
+            print(f"  error: {e}")
+            found = []
         for t in found:
             t["district"] = DISTRICT_NAMES.get(d, d)
             all_found.append(t)
