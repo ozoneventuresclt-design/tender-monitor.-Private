@@ -1,0 +1,34 @@
+name: Tender check
+on:
+  schedule:
+    - cron: "30 11 * * *"      # daily 5:00 PM IST
+  workflow_dispatch:
+    inputs:
+      last_window:
+        description: "Ormayulla avasaanathe window number (optional, eg. G286117/2026 allenkil 286117)"
+        required: false
+        default: ""
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python tender_monitor.py
+        env:
+          DISTRICTS: "14.0,13.0,12.0,11.0,10.0,9.0,8.0"   # Kasargode, Kannur, Wayanad, Kozhikode, Malappuram, Palakkad, Thrissur
+          MAX_PAGES: "5"
+          LAST_WINDOW: ${{ github.event.inputs.last_window }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Save seen.json
+        run: |
+          git config user.name "tender-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add seen.json
+          git diff --cached --quiet || (git commit -m "update seen" && git push)
