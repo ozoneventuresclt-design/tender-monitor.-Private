@@ -14,7 +14,7 @@ Settings (environment variables):
   MAX_PAGES   oru districtil ethra page vare nokkanam (default 5)
   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID   (optional)
 """
-import json, os, sys, time
+import html, json, os, sys, time
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -155,12 +155,21 @@ def main():
     seen.update(t["window_no"] for t in all_found)
     SEEN_FILE.write_text(json.dumps(sorted(seen), indent=0))
 
+    top = max(all_found, key=lambda t: win_num(t["window_no"]))
+    footer = (f"INNATHE ETTAVUM VALUTHU WINDOW NUMBER: {top['window_no']}  "
+              f"(naale 'last window' aayi kodukkaan: {win_num(top)})")
+
     if first_run and not threshold:
-        print(f"First run: {len(all_found)} notices note cheythu. Ini mudal puthiyathu mathram kaanikkum.")
+        msg = f"First run: {len(all_found)} notices note cheythu. Ini mudal puthiyathu mathram kaanikkum."
+        print(msg)
+        print(footer)
+        write_outputs([], footer, msg)
         return
     if not new:
         print("Puthiya tender illa.")
+        print(footer)
         OUT_FILE.write_text("")
+        write_outputs([], footer, "Puthiya tender illa.")
         return
 
     new.sort(key=lambda t: (t["district"], -win_num(t["window_no"])))
@@ -171,10 +180,47 @@ def main():
             current = t["district"]
             lines.append(f"=== {current} ===\n")
         lines.append(f"{t['localbody']}\n{t['subject']}\nWindow: {t['window_no']} | Last date: {t['last_date']}\n{t['pdf']}\n")
+    lines.append(footer)
     text = "\n".join(lines)
     print(text)
     OUT_FILE.write_text(text)
+    write_outputs(new, footer, f"{len(new)} puthiya tender")
     send_telegram(text)
+
+
+def write_outputs(new, footer, headline):
+    """1) GitHub run summary (clickable links)  2) new_tenders.html (links new tab-il thurakkum)"""
+    # --- HTML page ---
+    parts = ["<!doctype html><html><head><meta charset='utf-8'>",
+             "<meta name='viewport' content='width=device-width, initial-scale=1'>",
+             "<title>New tenders</title>",
+             "<style>body{font-family:sans-serif;max-width:900px;margin:1em auto;padding:0 1em}"
+             "h2{background:#e8f0d8;padding:.3em .5em}li{margin:.6em 0}small{color:#555}</style></head><body>",
+             f"<h1>{html.escape(headline)}</h1><p><b>{html.escape(footer)}</b></p>"]
+    md = [f"## {headline}", "", f"**{footer}**", ""]
+    current = None
+    for t in new:
+        if t["district"] != current:
+            if current is not None:
+                parts.append("</ul>")
+            current = t["district"]
+            parts.append(f"<h2>{html.escape(current)}</h2><ul>")
+            md += ["", f"### {current}", ""]
+        parts.append(
+            f"<li><a href='{html.escape(t['pdf'])}' target='_blank' rel='noopener'>"
+            f"{html.escape(t['localbody'])} - {html.escape(t['subject'])}</a><br>"
+            f"<small>Window {html.escape(t['window_no'])} | Last date {html.escape(t['last_date'])}</small></li>")
+        subject = t["subject"].replace("[", "(").replace("]", ")")
+        md.append(f"- [{t['localbody']} - {subject}]({t['pdf']}) - {t['window_no']}, last date {t['last_date']}")
+    if current is not None:
+        parts.append("</ul>")
+    parts.append("</body></html>")
+    Path(__file__).with_name("new_tenders.html").write_text("".join(parts), encoding="utf-8")
+
+    summary = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as f:
+            f.write("\n".join(md) + "\n")
 
 
 if __name__ == "__main__":
