@@ -25,10 +25,17 @@ jobs:
       - run: python tender_monitor.py
         env:
           DISTRICTS: "14.0,13.0,12.0,11.0,10.0,9.0,8.0"   # Kasargode, Kannur, Wayanad, Kozhikode, Malappuram, Palakkad, Thrissur
-          MAX_PAGES: "5"
+          MAX_PAGES: "10"
           LAST_WINDOW: ${{ github.event.inputs.last_window }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Upload new_tenders.html
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: new-tenders
+          path: new_tenders.html
+          if-no-files-found: ignore
       - name: Save seen.json
         run: |
           git config user.name "tender-bot"
