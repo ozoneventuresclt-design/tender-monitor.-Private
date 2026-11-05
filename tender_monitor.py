@@ -105,10 +105,17 @@ def main():
     session = requests.Session()
     all_found = []
     for d in districts:
-        for t in fetch_district(session, d, max_pages):
+        found = fetch_district(session, d, max_pages)
+        for t in found:
             t["district"] = DISTRICT_NAMES.get(d, d)
             all_found.append(t)
+        nums = [win_num(t["window_no"]) for t in found]
+        print(f"{DISTRICT_NAMES.get(d, d)}: {len(found)} notices kitti (ettavum valuthu window number: {max(nums) if nums else '-'})")
         time.sleep(2)
+    print(f"Ake {len(all_found)} notices kitti.\n")
+    if not all_found:
+        print("WARNING: ONNUM KITTIYILLA - site block cheythathaakam allenkil page maariyathaakam.")
+        sys.exit(1)
 
     if threshold:
         new = [t for t in all_found if win_num(t["window_no"]) > threshold]
